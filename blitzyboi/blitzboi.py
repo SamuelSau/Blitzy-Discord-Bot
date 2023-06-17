@@ -15,6 +15,9 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 tasks = {}
 
+# Global variable to store the last game that was added
+last_added_current_id = None
+
 # Define the Queue with deque from collections.
 class Queue:
     def __init__(self):
@@ -22,10 +25,15 @@ class Queue:
     
     def __len__(self):
         return len(self.games)
-        
+
+    def append(self, item):
+        self.games.append(item)
+    
+    def __getitem__(self, index):
+        return self.games[index]
+    
 # Create an instance of Queue
 game_queue = Queue()
-last_added_game_id = None
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -139,18 +147,17 @@ async def stoptrack(ctx, summoner_name):
         await ctx.send(f'Not currently tracking {summoner_name}.')
 
 '''
-Usage: !bet <amount> <status>
+Usage: !bet <amount> <status> <summoner_name>
 Only bet valid amount of points and can only within 5 minutes when game started
 '''
 @bot.command()
-async def bet(ctx, points: int, prediction: str):
+async def bet(ctx, points: int, prediction: str, summoner_name: str):
     user_id = ctx.author.id
     user_name = ctx.author.name
     user_points = get_user_points(user_id)
-
     # Fetch summoner details from game_queue
-    if len(game_queue) > 0:
-        current_game = game_queue[0]
+    if len(game_queue.games) > 0:
+        current_game = game_queue.games[0]
         summoner_id = current_game["summoner_id"]
         summoner_name = current_game["summoner_name"]
         match_id = current_game["matchId"]
@@ -165,7 +172,7 @@ async def bet(ctx, points: int, prediction: str):
 
     if user_points <= 0:
         await ctx.send(f"{user_name} cannot bet with {user_points} points")
-        
+
     if points <= 0:
         await ctx.send(f"{user_name} cannot bet {points} points")
         
@@ -173,7 +180,7 @@ async def bet(ctx, points: int, prediction: str):
         difference = points - user_points
         await ctx.send(f'{user_name}, you cannot bet more points than you have')
         await ctx.send(f'{user_name} is short of {difference} points')
-        
+
     else:
         
         if not game_queue: #empty queue
@@ -185,8 +192,9 @@ async def bet(ctx, points: int, prediction: str):
             closing_period = time_passed_game_length * minutes > (seconds * minutes) #more than 5 minutes from start time
             
             if closing_period:
-                await ctx.send(f'{user_name}, betting for the current game is closed. You had {seconds * minutes} minutes nub')
-                
+                await ctx.send(f'{user_name}, betting for the current game is closed. You had {minutes} minutes nub')
+                return
+            
             user_points -= points
             await ctx.send(f"{user_name} has bet {points} points")
             await ctx.send(f"{user_name} currently now has {user_points} points left")
@@ -195,20 +203,22 @@ async def bet(ctx, points: int, prediction: str):
 
             if len(game_queue.games) > 0: #at least 1 game
                 match_id = game_queue.games[0]
-            
+
             if len(game_queue.games) == 0: #no games
                 match_id = None
 
-            if match_id: #maybe have a while loop that keeps checking if game is done
+            if match_id: 
                 game_result = check_game_result(match_id, summoner_name)
                 if game_result == 'victory' and prediction == 'victory':
                     user_points = user_points + (points * 2)
                     update_user_points(user_id, user_points)
                     await ctx.send(f'You predicted {prediction} and won the bet! You now have {user_points} points.')
+
                 elif game_result == 'defeat' and prediction == 'defeat':
                     user_points = user_points - (points * 2)
                     update_user_points(user_id, user_points)
                     await ctx.send(f'You predicted {prediction} and lost the bet. You now have {user_points} points.')
+
                 else: #not valid game result
                     ctx.send(f"Sorry, {user_name}. Error retrieving game result")
             else:
@@ -221,18 +231,18 @@ TRACKING SUMMONERS
 '''
 
 async def track_summoner(ctx, summoner_id, summoner_name, puuid):
-    global last_added_game_id
-    
+    global last_added_current_id
+    base_delay = 5 * 60  # Initial delay is 5 minutes
+    delay = base_delay
     while True:
         is_in_game = await check_if_summoner_in_game(ctx, summoner_id, summoner_name)
 
         if is_in_game:
-            
-            most_current_match_id = requests.get(f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count=1&api_key={RIOT_API_KEY}")
-            
-            if most_current_match_id.status_code == 200:
-
-                if most_current_match_id != last_added_current_id: #user is in-game for another match
+            response = requests.get(f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count=1&api_key={RIOT_API_KEY}")
+            if response.status_code == 200:
+                most_current_match_id = response.json()[0]
+                if most_current_match_id != last_added_current_id:  # User is in-game for another match
+                    last_added_current_id = most_current_match_id
                     new_game = {
                         "matchId": most_current_match_id,
                         "summoner_id": summoner_id,
@@ -240,21 +250,33 @@ async def track_summoner(ctx, summoner_id, summoner_name, puuid):
                         "start_time": time.time()
                     }
                     game_queue.append(new_game)
-                    last_added_current_id = most_current_match_id
-                    await ctx.send(f'Found {summoner_name} in-game!')
-    
+                    await ctx.send(f'Found {summoner_name} in-game! Their current match id is {last_added_current_id}')
+
+                    delay = base_delay  # Reset the delay when a game starts
+
                 if len(game_queue.games) > 0: 
                     finished_game = check_first_game(game_queue, puuid)
                     if finished_game:
                         result = handle_finished_game(finished_game, summoner_name)
                         await ctx.send(result)
-            else:
-                print(f"Failed to get match id and got status code of {most_current_match_id.status_code}")
-                await ctx.send(f"Failed to get current match and got status code of {most_current_match_id.status_code}")
-                await asyncio.sleep(1200)
-        else:
-            await asyncio.sleep(1200)
 
+            else:
+                print(f"Failed to get match id and got status code of {response.status_code}")
+                await ctx.send(f"Failed to get current match and got status code of {response.status_code}")
+                await asyncio.sleep(1200)
+
+        else:
+            if last_added_current_id is not None: # the summoner has finished a game
+                if len(game_queue.games) > 0: 
+                    finished_game = check_first_game(game_queue, puuid)
+                    if finished_game:
+                        result = handle_finished_game(finished_game, summoner_name)
+                        await ctx.send(result)
+                last_added_current_id = None
+
+            await asyncio.sleep(delay)  # Wait for the delay period
+            await ctx.send(f"We will recheck if the game has finished in the next {delay} minutes")
+            delay *= 2  # Double the delay for the next iteration
 
 '''
 ############
@@ -268,8 +290,9 @@ def get_summoner_info(summoner_name: str):
     if response.status_code == 200:
         data = response.json()
         return (data['id'], data['puuid'])
-    return None, None
-
+    else:
+        print(f"get_summoner_info() returns {summoner_name} and status code is {response.status_code}")
+        return None, None
 
 #Returns the entire JSON response or False if summoner in-game
 async def check_if_summoner_in_game(ctx, summoner_id:str, summoner_name:str):
@@ -284,7 +307,7 @@ async def check_if_summoner_in_game(ctx, summoner_id:str, summoner_name:str):
 
 #Checks if 1st match in list, and if the game has started, then remove from queue
 def check_first_game(game_queue, puuid:str):
-    response = requests.get(f"https://na1.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count=1&api_key={RIOT_API_KEY}")
+    response = requests.get(f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count=1&api_key={RIOT_API_KEY}")
     if response.status_code == 200:
         first_game = response.json()[0]
         if first_game == game_queue['matchId']:
@@ -297,10 +320,9 @@ def check_first_game(game_queue, puuid:str):
 def check_game_result(match_id:str, summoner_name: str):
     match_detail = get_match_details(match_id)
     for i in range(10):
-        summonerName =  match_detail['info']['participants'][i]
-        if summonerName == summoner_name:
-            has_won = match_detail['info']['participants']['win']
-
+        summonerName = match_detail['info']['participants'][i]
+        if summonerName['summonerName'] == summoner_name:
+            has_won = match_detail['info']['participants']['win'] #will return true or false for win in api
             if has_won:
                 return 'victory'
             else:
