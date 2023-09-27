@@ -1,0 +1,27 @@
+{
+	"name": "blitzy-discord-bot",
+	"version": "1.0.0",
+	"description": "Creating a fun project where you can enter bet with virtual currency through a Discord Bot for League of Legends.",
+	"main": "index.js",
+	"scripts": {
+		"start": "node src/index.js",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SamuelSau/Blitzy-Discord-Bot.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/SamuelSau/Blitzy-Discord-Bot/issues"
+	},
+	"homepage": "https://github.com/SamuelSau/Blitzy-Discord-Bot#readme",
+	"dependencies": {
+		"discord.js": "^14.13.0",
+		"dotenv": "^16.3.1",
+		"league-connect": "^6.0.0-rc12"
+	},
+	"type": "module"
+}
