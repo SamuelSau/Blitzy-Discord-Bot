@@ -1,15 +1,20 @@
-import  {
+import {
 	authenticate,
 	createWebSocketConnection,
 	LeagueClient,
-}  from 'league-connect';
+} from 'league-connect';
 
-import { announceBetStart, betMatch, announceMatchResult, distributePoints } from './discordBot.js';
-
+import {
+	announceBetStart,
+	betMatch,
+	announceMatchResult,
+	distributePoints,
+	sendGameStateNotification,
+} from './discordBot.js';
 
 export async function startLeagueClient() {
-    // ... all the logic for starting, handling, and monitoring the League client ...
-    // 1. Authenticate to get credentials
+	// ... all the logic for starting, handling, and monitoring the League client ...
+	// 1. Authenticate to get credentials
 	const credentials = await authenticate({
 		awaitConnection: true,
 		pollInterval: 5000, //ms? -> 5 seconds
@@ -24,23 +29,24 @@ export async function startLeagueClient() {
 
 	//track down the gameflow phase
 	ws.subscribe('/lol-gameflow/v1/gameflow-phase', (data, event) => {
-		if (data === "GameStart") {
+		if (data === 'GameStart') {
 			//give 5 minutes for betting to open
-			console.log("game has started when champ selected ended successfully");
+			console.log('game has started when champ selected ended successfully');
+			sendGameStateNotification(data);
 			announceBetStart();
-
-		}
-		else if (data === "InProgress") {
+		} else if (data === 'InProgress') {
 			//we are currently in a match
-			console.log("we are currently in a match");
-			betMatch();
-		}
-		else if (data === "None") {
+			console.log('we are currently in a match');
+			sendGameStateNotification(data);
+			//betMatch();
+		} else if (data === 'None') {
 			//or whatever is actualy the postscreen match
 			//then we give the rewards to whoever betted on the winner
-			console.log("this is after they have exited the post game stats screen");
-		}
-		else {
+			console.log(
+				'this is after they have exited either queue, post game, or whatever'
+			);
+		} else {
+			sendGameStateNotification(data);
 			console.log(data);
 		}
 	});
@@ -48,25 +54,21 @@ export async function startLeagueClient() {
 	//when the game ends, we need to give the rewards to the winners
 	ws.subscribe('/lol-end-of-game/v1/eog-stats-block', (data, event) => {
 		console.log('/lol-end-of-game/v1/eog-stats-block:', data); //this is important if we reach to the end of game stats screen
-		const blueTeam = data['teams'][0][100];
-		const redTeam = data['teams'][1][200];
+		const blueTeam = data['localPlayer']['teamId'];
+    const hasWon = data['localPlayer']['stats']['WIN'];
 
-		if (blueTeam['isWinningTeam'] === true) {
+		if (blueTeam === 100 && hasWon === 1) {
 			//give rewards to everyone who betted on blue team
 			console.log('blue team won');
-			announceMatchResult("Blue"); // Announce match result
-            distributePoints();   // Distribute points based on the result
-
-		}
-		else {
+			announceMatchResult('Blue'); // Announce match result
+			distributePoints(); // Distribute points based on the result
+		} else {
 			//give rewards to everyone who betted on red team
-			console.log("red team won");
-			announceMatchResult("Red"); // Announce match result
-            distributePoints();   // Distribute points based on the result
-
+			console.log('red team won');
+			announceMatchResult('Red'); // Announce match result
+			distributePoints(); // Distribute points based on the result
 		}
 	});
-
 
 	// 4. Handle LeagueClient states
 	const client = new LeagueClient(credentials);
@@ -93,7 +95,6 @@ export async function startLeagueClient() {
 		process.exit(); // Exit the process
 	});
 }
-
 
 /*
 SummonerIDs:
@@ -218,6 +219,3 @@ if /lol-gameflow/v1/session (can also give us the phase and all other info), but
 }
 
 */
-
-
-

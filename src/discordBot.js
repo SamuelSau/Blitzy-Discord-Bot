@@ -4,11 +4,12 @@ const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
 // Example in-memory structure for user inventories and bets, of course feel free to change to database if you want to permanently store the data
 const userInventories = new Map(); // Store user inventory amounts
 const userBets = new Map(); // Store user bets
+const channelId = "1040446663304683584";
 
 export function startDiscordBot() {
 
@@ -61,24 +62,63 @@ export function startDiscordBot() {
 		});
 
 
-	client.on('ready', () => {
+	client.on('ready', async () => {
         console.log(`Logged in as ${client.user.tag}!`);
-      });
+              // Example: Update points in a specific channel
+			  const userIds = await fetchUserIdsFromChannel(channelId);
+			  initializeUserInventories(userIds);
+	  
+			  setInterval(() => {
+				  userIds.forEach(userId => {
+					  let currentPoints = userInventories.get(userId) || 0;
+					  userInventories.set(userId, currentPoints + 50); // Add 50 points every minute
+				  });
+			  }, 60000); // 60000 ms = 1 minute
+		  });
 
 	client.login(DISCORD_BOT_TOKEN);
 }
 
-// bot will notify the users in that channel based on the functions bellow
+async function fetchUserIdsFromChannel(channelId) {
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) return []; // Channel not found
 
-async function announceBetStart() {
-	const channelId = "YOUR_CHANNEL_ID";
+    let allUserIDs = [];
+
+    // Assuming this is a text channel in a guild
+    if (channel.isTextBased()) {
+        const messages = await channel.messages.fetch({ limit: 100 });
+        messages.forEach(message => {
+            allUserIDs.push(message.author.id);
+        });
+    }
+
+    return Array.from(new Set(allUserIDs)); // Remove duplicates
+}
+
+function initializeUserInventories(userIds) {
+    userIds.forEach(userId => {
+        userInventories.set(userId, 5000); // Initialize with 5000 points
+    });
+}
+
+export async function sendGameStateNotification(gameState){
+	const channel = client.channels.cache.get(channelId);
+	if (channel) {
+		channel.send(`The current summoner is now in ${gameState}`);
+	}
+}
+
+
+// bot will notify the users in that channel based on the functions bellow
+export async function announceBetStart() {
 	const channel = client.channels.cache.get(channelId);
 	if (channel) {
 		channel.send('Betting for the next match has started! Use /bet to place your bets.');
 	}
 }
 
-async function betMatch(interaction) {
+export async function betMatch(interaction) {
     const team = interaction.options.getString('team');
     const amount = interaction.options.getInteger('amount');
     const userId = interaction.user.id;
@@ -95,7 +135,7 @@ async function betMatch(interaction) {
 }
 
 
-async function checkInventoryAmount(interaction) {
+export async function checkInventoryAmount(interaction) {
     const userId = interaction.user.id;
     const inventoryAmount = userInventories.get(userId) || 0;
 
@@ -103,20 +143,19 @@ async function checkInventoryAmount(interaction) {
 }
 
 
-export function announceMatchResult(result) {
+export async function announceMatchResult(result) {
     // 'result' should be either 'red' or 'blue'
     // Announce the result in the channel
     // This function needs to be called from leagueClient.js with the result of the match
     const announcement = `The match has ended. ${result} team is victorious!`;
     // Assuming you have a channel ID to send messages
-    const channelId = "YOUR_CHANNEL_ID";
     const channel = client.channels.cache.get(channelId);
     if (channel) {
         channel.send(announcement);
     }
 }
 
-export function distributePoints(result) {
+export async function distributePoints(result) {
     // 'result' should be either 'red' or 'blue'
     userBets.forEach((bet, userId) => {
         if (bet.team === result) {
@@ -131,7 +170,6 @@ export function distributePoints(result) {
     userBets.clear();
 
     // Announce the distribution of points in the channel
-    const channelId = "YOUR_CHANNEL_ID";
     const channel = client.channels.cache.get(channelId);
     if (channel) {
         channel.send('Points have been distributed to the winners.');
