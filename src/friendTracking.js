@@ -1,0 +1,76 @@
+import axios from 'axios';
+import {} from 'dotenv/config';
+// Assuming you have functions from your Discord bot logic
+import { announceBetStart, sendGameStateNotification } from './discordBot.js';
+
+const myFriendsWithSummonerIds = new Map();
+const RIOT_API_KEY = process.env.RIOT_API_KEY;
+
+// populate the map with the summoner ids values and keys as the summoners name based on the friends list (hardcoded for now lol, could do dynamically if wanted)
+myFriendsWithSummonerIds.set(
+	'OmegaCube',
+	'VFm-fmnbpEDMV5bcUtJoFHvs7GXIbsXUje1M2wIUm-GOtR8'
+);
+myFriendsWithSummonerIds.set(
+	'Larvesta',
+	'NzA8Z4AJHmDiVjgmHvx_dABrrs1clOhkZtWdbJ5NPnr2x38'
+);
+myFriendsWithSummonerIds.set(
+	'pho boi',
+	'iHYG4rkavwCHeHgAUTi-iTOhkAM1YxdTRFslOYvzurGk2KQ'
+);
+myFriendsWithSummonerIds.set(
+	'Wild Inosuke',
+	'-aTPIgytYXVtik0_08jmNglnwrXUu6QKCtTe_4qU5wr7Mmc'
+);
+
+/*
+SummonerIDs:
+
+OmegaCube: VFm-fmnbpEDMV5bcUtJoFHvs7GXIbsXUje1M2wIUm-GOtR8
+Larvesta: NzA8Z4AJHmDiVjgmHvx_dABrrs1clOhkZtWdbJ5NPnr2x38
+pho boi: iHYG4rkavwCHeHgAUTi-iTOhkAM1YxdTRFslOYvzurGk2KQ
+Wild Inosuke: -aTPIgytYXVtik0_08jmNglnwrXUu6QKCtTe_4qU5wr7Mmc
+Bush Can Talk: JJlZzMHHmBqhpSTn946VFhIdK7Z5KCbnybc3zAwHH6CLxyY
+*/
+const checkInterval = 100000; // Check every 1 minute
+
+export async function startFriendTracking() {
+	setInterval(async () => {
+		for (const summonerIds of myFriendsWithSummonerIds.values()) {
+			try {
+				const response = await axios.get(
+					`https://na1.api.riotgames.com/lol/spectator/v4/active-games/by-summoner/${summonerIds}?api_key=${RIOT_API_KEY}`
+				);
+				const data = response.data;
+                const friend = myFriendsWithSummonerIds.get(summonerIds);
+
+				// Logic to check if the friend is in a game
+				if (data) { //200 response that friend is in a game
+					//print the summoner name associated with the summonerId
+					console.log(`${friend} is in a game!`);
+
+					// Call Discord bot functions based on the game state
+					// For example, announce the start of betting
+					announceBetStart();
+
+					// Notify about the game state
+					sendGameStateNotification(`${friend} is in a game!`);
+				} else {
+					console.log(`${friend} is not in a game!`);
+				}
+			} catch (error) {
+                const friend = myFriendsWithSummonerIds.get(summonerIds);
+
+                if (error.response.status === 404) {
+                    console.log(`${friend} is not in a game!`);
+                }
+
+                else{
+                    console.error(`Error checking status for ${friend}:`, error);
+
+                }
+			}
+		}
+	}, checkInterval);
+}
