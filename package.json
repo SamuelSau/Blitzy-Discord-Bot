@@ -23,7 +23,8 @@
 		"discord.js": "^14.14.1",
 		"dotenv": "^16.3.1",
 		"jest": "^29.7.0",
-		"league-connect": "^6.0.0-rc12"
+		"league-connect": "^6.0.0-rc12",
+		"mongodb": "^6.3.0"
 	},
 	"type": "module"
 }

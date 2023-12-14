@@ -1,3 +1,5 @@
+// const {connectMongoDB} = require('./mongodbClient');
+import { connectMongoDB } from './mongoDBConnection.js';
 import {
 	Client,
 	GatewayIntentBits,
@@ -14,15 +16,14 @@ const client = new Client({
 	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
 });
 
-// Example in-memory structure for user inventories and bets, of course feel free to change to database if you want to permanently store the data
-const userInventories = new Map(); 
-const userBets = new Map(); 
-const hasBetted = new Map();
 let isBettingOpen = false;
 let leagueGambleChannelId;
 let guild;
 let channel;
 const channelName = 'league-gambling'
+
+let db;
+
 
  async function setUpChannel(){
 	guild = client.guilds.cache.get(GUILD_ID);
@@ -47,7 +48,10 @@ const channelName = 'league-gambling'
 
 }
 
-export function startDiscordBot() {
+export async function startDiscordBot() {
+
+	db = await connectMongoDB();
+
 	// Define Slash Commands
 	const commands = [
 		new SlashCommandBuilder()
@@ -139,12 +143,12 @@ export function bettingPeriod() {
                 remainingTime--;
                 if (remainingTime > 0) {
                     // Edit the message with the updated countdown
-                    message.edit(`**You have ${remainingTime} minutes left to bet.**`);
+                    message.edit(`Bush can Talk is now in a game.\n\nBetting period has started!\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n**You have ${remainingTime} minutes left to bet.**`);
                 } else {
                     clearInterval(countdownInterval);
                     isBettingOpen = false;
                     // Final update to the message
-                    message.edit('Betting period has ended.');
+                    message.edit(`**Betting period has ended at ${endTimeFormatted}**`);
                 }
             }, 60 * 1000); // 60 seconds
         });
@@ -155,27 +159,18 @@ export async function betMatch(interaction) {
 	const team = interaction.options.getString('team');
 	const amount = interaction.options.getInteger('amount');
 	const userId = interaction.user.id;
-	const guild = client.guilds.cache.get(GUILD_ID);
-	let discordName = ''; 
 
-	// Initialize for first-time users that use bet command
-    if (!userInventories.has(userId)) {
-        userInventories.set(userId, 5000); 
-        hasBetted.set(userId, false);
+	// Fetch or initialize user inventory
+    const inventoryCollection = db.collection('userInventories');
+    let inventory = await inventoryCollection.findOne({ userId });
+
+    if (!inventory) {
+        // User does not exist in the database, initialize with 5000 points
+        await inventoryCollection.insertOne({ userId, balance: 5000 });
+        inventory = { balance: 5000 };
     }
 
-	if (guild){
-		try {
-			const member = await guild.members.fetch(userId); // Await the fetch
-			discordName = member.user.username; // Set the variable
-		} catch (error) {
-			console.error('Error fetching member:', error);
-			// Handle error (e.g., member not found)
-			return;
-		}
-	}
-
-	if (!userInventories.has(userId) || userInventories.get(userId) < amount) {
+	if (inventory.balance < amount) {
 		await interaction.reply({
 			content: 'Insufficient credit to place this bet.',
 			ephemeral: true,
@@ -183,89 +178,83 @@ export async function betMatch(interaction) {
 		return;
 	}
 
-	let didBet = hasBetted.get(userId);
+	// Check if user has already placed a bet
+	const betsCollection = db.collection('userBets');
+	const existingBet = await betsCollection.findOne({ userId });
 
-	if (didBet === false){
-		userBets.set(userId, { team, amount });
-		userInventories.set(userId, userInventories.get(userId) - amount);
-	
+	if (existingBet) {
 		await interaction.reply({
-			content: `${discordName} has placed: ${amount} points on ${team} team.`,
-		});
-		hasBetted.set(userId, true);
-		return;
-	}
-
-	else if (didBet === true){ //only be able to bet once each  game
-		const bet = userBets.get(userId);
-		await interaction.reply({
-			content: `${discordName} has already betted ${bet.amount} points on ${bet.team} team. Can only bet once per game`,
-			ephemeral: true,
-		})
-		return;
-	}
-
-	if (!isBettingOpen) {
-		await interaction.reply({
-			content: 'No betting during this time.',
-			ephemeral: true,
+			content: 'You have already placed a bet. You can only bet once per game.',
+			ephermal: true
 		});
 		return;
 	}
-}
+
+	// Place a new bet and update user inventory
+	await betsCollection.insertOne({ userId, team, amount });
+	await inventoryCollection.updateOne(
+		{ userId },
+		{ $inc: { balance: -amount } }
+	);
+
+	await interaction.reply(`Bet placed: ${amount} points on ${team} team.`);
+
+		if (!isBettingOpen) {
+			await interaction.reply({
+				content: 'No betting during this time.',
+				ephemeral: true
+			});
+			return;
+		}
+	}
 
 
 export async function annnounceResultAndDistributePoints(result) {
-	userBets.forEach((bet, userId) => {
-		if (bet.team === result) { //for the team that won
+	const betsCollection = db.collection('userBets');
+    const inventoryCollection = db.collection('userInventories');
+	let discordName = ''; 
 
-			const winnings = bet.amount * 2; // Example: double the bet amount
-			const currentInventory = userInventories.get(userId) || 0;
-			userInventories.set(userId, currentInventory + winnings);
+    const bets = await betsCollection.find().toArray();
+    let resultsMessage = 'Betting Results:\n\n';
+
+	if (channel && guild){
+		for (const bet of bets) {
+			try {
+				const member = await guild.members.fetch(bet.userId); // Await the fetch
+				discordName = member.user.username; // Set the variable
+			} catch (error) {
+				console.error('Error fetching member:', error);
+				return;
+			}
+
+			const updateAmount = bet.team === result ? bet.amount * 2 : -bet.amount;
+			await inventoryCollection.updateOne(
+				{ userId: bet.userId },
+				{ $inc: { balance: updateAmount } }
+			);
+	
+			const updatedInventory = await inventoryCollection.findOne({ userId: bet.userId });
+			resultsMessage += `${discordName} now currently has ${updatedInventory.balance} points.\n`;
 		}
-		else if (bet.team !== result){
-			const losings = bet.amount * 2;
-			const currentInventory = userInventories.get(userId) || 0;
-			userInventories.set(userId, currentInventory - losings);
-		}
-	});
-
-	const announcement = `The match has ended. ${result.toUpperCase()} team is victorious!`;
-
-	hasBetted.forEach((value, key) => {
-		hasBetted.set(key, false);
-	});
-
-
-	if (channel) {
+	
+		const announcement = `The match has ended. ${result.toUpperCase()} team is victorious!`;
+		
 		channel.send(announcement);
+		channel.send(resultsMessage);
+
 	}
+	// Clear all bets
+    await betsCollection.deleteMany({});
 
-	if (channel && guild) {
-        let resultsMessage = 'Betting Results:\n\n';
-
-        for (const [userId, bet] of userBets) {
-            try {
-                const member = await guild.members.fetch(userId);
-                const discordName = member.user.username;
-                resultsMessage += `${discordName} now currently has ${userInventories.get(userId)} points after betting on ${bet.team} with ${bet.amount} points.\n`;
-            } catch (error) {
-                console.error(`Error fetching member: ${error}`);
-            }
-        }
-
-        channel.send(resultsMessage);
-    }
-
-	userBets.clear();
 }
 
 export async function checkInventoryAmount(interaction) {
 	const userId = interaction.user.id;
-	const inventoryAmount = userInventories.get(userId) || 0;
+    const inventoryCollection = db.collection('userInventories');
+    const inventory = await inventoryCollection.findOne({ userId }) || { balance: 0 };
 
-	await interaction.reply({
-		content: `You have ${inventoryAmount} points in your inventory.`,
-		ephemeral: true,
-	});
+    await interaction.reply({
+        content: `You have ${inventory.balance} points in your inventory.`,
+        ephermal: true
+    });
 }

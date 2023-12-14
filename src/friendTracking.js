@@ -23,11 +23,6 @@ myFriendsWithSummonerIds.set(
 	'-aTPIgytYXVtik0_08jmNglnwrXUu6QKCtTe_4qU5wr7Mmc'
 );
 
-myFriendsWithSummonerIds.set(
-	'l1mhady',
-	'jQYRWJILlaBW5TytRqznmGd1cumCvoCZY-bvx_RbV7Bb_gY'
-)
-
 /*
 SummonerIDs:
 
