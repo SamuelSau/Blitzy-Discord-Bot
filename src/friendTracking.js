@@ -1,7 +1,6 @@
 import axios from 'axios';
 import {} from 'dotenv/config';
 // Assuming you have functions from your Discord bot logic
-import { announceBetStart } from './discordBot.js';
 
 const myFriendsWithSummonerIds = new Map();
 const RIOT_API_KEY = process.env.RIOT_API_KEY;
@@ -29,7 +28,6 @@ myFriendsWithSummonerIds.set(
 	'jQYRWJILlaBW5TytRqznmGd1cumCvoCZY-bvx_RbV7Bb_gY'
 )
 
-
 /*
 SummonerIDs:
 
@@ -55,7 +53,6 @@ export async function startFriendTracking() {
 				if (data) { //200 response that friend is in a game
 					//print the summoner name associated with the summonerId
 					console.log(`${friend} is in a game!`);
-					announceBetStart();
 				} else {
 					console.log('Data is NULL\n');
 					console.log(`${friend} is not in a game!`);

@@ -15,40 +15,36 @@ const client = new Client({
 });
 
 // Example in-memory structure for user inventories and bets, of course feel free to change to database if you want to permanently store the data
-const userInventories = new Map(); // Store user inventory amounts
-const userBets = new Map(); // Store user bets
+const userInventories = new Map(); 
+const userBets = new Map(); 
 const hasBetted = new Map();
 let isBettingOpen = false;
 let leagueGambleChannelId;
+let guild;
+let channel;
+const channelName = 'league-gambling'
 
-async function setUpChannel(){
-	// Assuming the bot is part of one guild, or you know the specific guild ID
-	const guild = client.guilds.cache.get(GUILD_ID); // or use client.guilds.cache.get('YOUR_GUILD_ID') for a specific guild
-	const channelName = 'league-gamble';
-	// Check if the channel already exists
+ async function setUpChannel(){
+	guild = client.guilds.cache.get(GUILD_ID);
+
 	const existingChannel = guild.channels.cache.find(
 		(ch) => ch.name === channelName && ch.type === 0
 	);
 	if (existingChannel) {
-		console.log(
-			`Channel already exists: ${existingChannel.name} with ID: ${existingChannel.id}`
-		);
 		leagueGambleChannelId = existingChannel.id;
 	} else {
-		// Create the channel
 		try {
-			const channel =  guild.channels.create( {
+			channel = await guild.channels.create( {
 				name: channelName,
 				type: 0, // Make sure it's a text channel
-				reason: 'Needed a dedicated channel for league gambling',
 			});
-			console.log(`Created channel: ${channel.name} with ID: ${channel.id}`);
 			leagueGambleChannelId = channel.id;
 		} catch (error) {
 			console.error(`Error creating channel: ${error}`);
 		}
 	}
 	return leagueGambleChannelId;
+
 }
 
 export function startDiscordBot() {
@@ -112,7 +108,7 @@ export function startDiscordBot() {
 		console.log(`Logged in as ${client.user.tag}!`);
 
 		leagueGambleChannelId = await setUpChannel();
-		await initializeUserInventories();
+		channel = client.channels.cache.get(leagueGambleChannelId);
 
 	});
 
@@ -124,14 +120,20 @@ export function bettingPeriod() {
     isBettingOpen = true;
     let remainingTime = 5; // Time in minutes
 
-    const channel = client.channels.cache.get(leagueGambleChannelId);
     if (!channel) {
         console.error('Channel not found');
         return;
     }
 
-    // Send the initial countdown message and store its ID
-    channel.send(`Bush can Talk is now in a game\n\n Betting period has started!\n You have ${remainingTime} minutes to place your bets.`)
+	const startTime = new Date(); // Current time
+    const endTime = new Date(startTime.getTime() + remainingTime * 60 * 1000); // Add 5 minutes
+
+    // Format time for display
+    const startTimeFormatted = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const endTimeFormatted = endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    // Send the initial countdown message
+    channel.send(`Bush can Talk is now in a game.\n\nBetting period has started!\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n`)
         .then((message) => {
             const countdownInterval = setInterval(() => {
                 remainingTime--;
@@ -148,36 +150,24 @@ export function bettingPeriod() {
         });
 }
 
-async function fetchUserIdsFromChannel() {
-    const channel = await client.channels.fetch(leagueGambleChannelId);
-    if (!channel || !channel.isTextBased()) return [];
-
-    const messages = await channel.messages.fetch({ limit: 100 });
-    const userIds = [...messages.values()].map(message => message.author.id);
-    return [...new Set(userIds)]; // Remove duplicates
-}
-
-async function initializeUserInventories() {
-	const userIds = await fetchUserIdsFromChannel();
-	userIds.forEach((userId) => {
-		userInventories.set(userId, 5000); // Initialize with 5000 points
-		hasBetted.set(userId, false);	 //Initialize false for all bets from all users
-	});
-}
-
 
 export async function betMatch(interaction) {
 	const team = interaction.options.getString('team');
 	const amount = interaction.options.getInteger('amount');
 	const userId = interaction.user.id;
 	const guild = client.guilds.cache.get(GUILD_ID);
-	let discordName = ''; // Initialize the variable in a broader scope
+	let discordName = ''; 
+
+	// Initialize for first-time users that use bet command
+    if (!userInventories.has(userId)) {
+        userInventories.set(userId, 5000); 
+        hasBetted.set(userId, false);
+    }
 
 	if (guild){
 		try {
 			const member = await guild.members.fetch(userId); // Await the fetch
 			discordName = member.user.username; // Set the variable
-			console.log(`Discord name of the user: ${discordName}`);
 		} catch (error) {
 			console.error('Error fetching member:', error);
 			// Handle error (e.g., member not found)
@@ -224,35 +214,11 @@ export async function betMatch(interaction) {
 	}
 }
 
-export async function checkInventoryAmount(interaction) {
-	const userId = interaction.user.id;
-	const inventoryAmount = userInventories.get(userId) || 0;
 
-	await interaction.reply({
-		content: `You have ${inventoryAmount} points in your inventory.`,
-		ephemeral: true,
-	});
-}
-
-export async function announceMatchResult(result) {
-	const announcement = `The match has ended. ${result} team is victorious!`;
-	// Assuming you have a channel ID to send messages
-	const channel = client.channels.cache.get(leagueGambleChannelId);
-	// Reset the hasBetted status for all users
-	hasBetted.forEach((value, key) => {
-		hasBetted.set(key, false);
-	});
-
-
-	if (channel) {
-		channel.send(announcement);
-	}
-}
-
-export async function distributePoints(result) {
+export async function annnounceResultAndDistributePoints(result) {
 	userBets.forEach((bet, userId) => {
 		if (bet.team === result) { //for the team that won
-			// User won the bet
+
 			const winnings = bet.amount * 2; // Example: double the bet amount
 			const currentInventory = userInventories.get(userId) || 0;
 			userInventories.set(userId, currentInventory + winnings);
@@ -264,16 +230,18 @@ export async function distributePoints(result) {
 		}
 	});
 
-	announceBetResults(userBets);
+	const announcement = `The match has ended. ${result.toUpperCase()} team is victorious!`;
 
-	userBets.clear();
-}
+	hasBetted.forEach((value, key) => {
+		hasBetted.set(key, false);
+	});
 
-async function announceBetResults(userBets) {
-    const channel = client.channels.cache.get(leagueGambleChannelId);
-    const guild = client.guilds.cache.get(GUILD_ID);
 
-    if (channel && guild) {
+	if (channel) {
+		channel.send(announcement);
+	}
+
+	if (channel && guild) {
         let resultsMessage = 'Betting Results:\n\n';
 
         for (const [userId, bet] of userBets) {
@@ -288,4 +256,16 @@ async function announceBetResults(userBets) {
 
         channel.send(resultsMessage);
     }
+
+	userBets.clear();
+}
+
+export async function checkInventoryAmount(interaction) {
+	const userId = interaction.user.id;
+	const inventoryAmount = userInventories.get(userId) || 0;
+
+	await interaction.reply({
+		content: `You have ${inventoryAmount} points in your inventory.`,
+		ephemeral: true,
+	});
 }
