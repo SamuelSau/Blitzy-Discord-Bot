@@ -19,11 +19,14 @@ export async function startLeagueClient() {
 		if (data === 'GameStart') {
 			bettingPeriod();
 		}
+
 	});
 
 	ws.subscribe('/lol-end-of-game/v1/eog-stats-block', (data, event) => {
 		const blueTeam = data['localPlayer']['teamId'];
 		const hasWon = data['localPlayer']['stats']['WIN'];
+
+		console.log(data);
 
 		if (blueTeam === 100 && hasWon === 1 ) {
 			annnounceResultAndDistributePoints('blue'); 

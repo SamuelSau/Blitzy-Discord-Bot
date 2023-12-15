@@ -6,6 +6,7 @@ import {
 	SlashCommandBuilder,
 	REST,
 	Routes,
+	EmbedBuilder 
 } from 'discord.js';
 import {} from 'dotenv/config';
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -13,7 +14,7 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
-	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
+	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent], 
 });
 
 let isBettingOpen = false;
@@ -78,7 +79,7 @@ export async function startDiscordBot() {
 			.setDescription('Check your inventory amount'),
 	].map((command) => command.toJSON());
 
-	const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+	const rest = new REST().setToken(DISCORD_BOT_TOKEN);
 
 	(async () => {
 		try {
@@ -106,8 +107,6 @@ export async function startDiscordBot() {
 		}
 	});
 
-
-
 	client.on('ready', async () => {
 		console.log(`Logged in as ${client.user.tag}!`);
 
@@ -116,8 +115,14 @@ export async function startDiscordBot() {
 
 	});
 
-
-	client.login(DISCORD_BOT_TOKEN);
+	client.login(DISCORD_BOT_TOKEN).then(() => {
+		// client.user is now defined
+		client.user.setPresence({
+			status: 'online',
+		});
+		client.user.setActivity('Hosting degenerate gambling 😎', { type: 4 });
+	   });
+	  
 }
 
 export function bettingPeriod() {
@@ -156,6 +161,7 @@ export function bettingPeriod() {
 
 
 export async function betMatch(interaction) {
+
 	const team = interaction.options.getString('team');
 	const amount = interaction.options.getInteger('amount');
 	const userId = interaction.user.id;
@@ -190,6 +196,7 @@ export async function betMatch(interaction) {
 		return;
 	}
 
+
 	// Place a new bet and update user inventory
 	await betsCollection.insertOne({ userId, team, amount });
 	await inventoryCollection.updateOne(
@@ -197,15 +204,16 @@ export async function betMatch(interaction) {
 		{ $inc: { balance: -amount } }
 	);
 
+	if (!isBettingOpen) {
+		await interaction.reply({
+			content: 'No betting during this time.',
+			ephemeral: true
+		});
+		return;
+	}
+
 	await interaction.reply(`Bet placed: ${amount} points on ${team} team.`);
 
-		if (!isBettingOpen) {
-			await interaction.reply({
-				content: 'No betting during this time.',
-				ephemeral: true
-			});
-			return;
-		}
 	}
 
 
@@ -240,11 +248,13 @@ export async function annnounceResultAndDistributePoints(result) {
 		const announcement = `The match has ended. ${result.toUpperCase()} team is victorious!`;
 		
 		channel.send(announcement);
+		await createGifEmbeddings();
 		channel.send(resultsMessage);
 
 	}
 	// Clear all bets
     await betsCollection.deleteMany({});
+
 
 }
 
@@ -257,4 +267,20 @@ export async function checkInventoryAmount(interaction) {
         content: `You have ${inventory.balance} points in your inventory.`,
         ephermal: true
     });
+}
+
+export async function createGifEmbeddings(){
+	const exampleEmbed = new EmbedBuilder()
+	.setColor(0x0099FF)
+	.setTitle('Losing')
+	.setURL('https://giphy.com/gifs/leagueoflegends-tft-pengu-teamfight-tactics-KznLOEq0pjNfXkZHaN')
+	.setAuthor({ name: 'League Of Legends', iconURL: 'https://media.giphy.com/avatars/leagueoflegends/RPBOVet8mekW/200h.jpeg', url: 'https://giphy.com/leagueoflegends' })
+	.setDescription('FF15')
+	.setThumbnail('https://i.imgur.com/AfFherep7pu.png')
+	.addFields({ name: 'How did we lose?', value: '-JG DIFF-', inline: true })
+	.setImage('https://media.giphy.com/media/KznLOEq0pjNfXkZHaN/giphy.gif')
+	.setTimestamp()
+	.setFooter({ text: "Sammy's sexy gif", iconURL: 'https://media.giphy.com/avatars/leagueoflegends/RPBOVet8mekW/200h.jpeg' });
+
+	channel.send({ embeds: [exampleEmbed] });
 }
