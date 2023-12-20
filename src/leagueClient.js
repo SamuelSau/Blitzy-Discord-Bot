@@ -15,24 +15,39 @@ export async function startLeagueClient() {
 		},
 	});
 
-	ws.subscribe('/lol-gameflow/v1/gameflow-phase', (data, event) => {
+	ws.subscribe('/lol-gameflow/v1/gameflow-phase', (data) => {
 		if (data === 'GameStart') {
 			bettingPeriod();
 		}
 
 	});
 
-	ws.subscribe('/lol-end-of-game/v1/eog-stats-block', (data, event) => {
-		const blueTeam = data['localPlayer']['teamId'];
-		const hasWon = data['localPlayer']['stats']['WIN'];
+	ws.subscribe('/lol-end-of-game/v1/eog-stats-block', (data) => { //grab if i am on the winning team
+		
+		let summonerName = 'Bush can talk';
+		let summonerTeamColor = null;
+		let result = null;
 
-		console.log(data);
-
-		if (blueTeam === 100 && hasWon === 1 ) {
-			annnounceResultAndDistributePoints('blue'); 
-		} else {
-			annnounceResultAndDistributePoints('red'); 
+		// Assuming 'data' is the parsed JSON object
+		for (let team of data.teams) {
+			for (let player of team.players) {
+				if (player.summonerName === summonerName) {
+					summonerTeamColor = team.teamId === 100 ? 'Blue' : 'Red';
+					result = team.isWinningTeam ? 'won' : 'lost';
+					break;
+				}
+			}
+			if (summonerTeamColor !== null) break;
 		}
+
+		if (summonerTeamColor !== null) {
+			console.log(`Summoner ${summonerName} was on the ${summonerTeamColor} team and they ${result} the game.`);
+		} else {
+			console.log(`Summoner ${summonerName} not found in the game.`);
+		}
+
+		annnounceResultAndDistributePoints(summonerName, summonerTeamColor, result); 
+
 	});
 
 	process.on('SIGINT', () => {

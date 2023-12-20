@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder} from 'discord.js';
 
 
 const winDescriptions = [
@@ -27,11 +27,16 @@ const loseDescriptions = [
     "WHY THEY HAVE SO MANY SMURFS",
     "I'M NOT ON COPIUM, I SWEAR",
     "IT'S BECAUSE DUY IS ON MY TEAM",
-    "HIEU PLAYS LIKE LEE SIN"
+    "HIEU PLAYS LIKE LEE SIN AKA BLIND",
+    "ALEX DRANK A LITTLE TOO MUCH BEFORE THIS GAME"
 ];
 
-export async function createGifEmbeddings(result){
+export async function createGifEmbeddings(result, channel){
 
+    if (!channel) {
+        console.error(`Channel not found`);
+        return;
+    }
 
     const settings = {
         won: {
@@ -58,12 +63,14 @@ export async function createGifEmbeddings(result){
 	.setAuthor({ name: 'League Of Legends', iconURL: 'https://media.giphy.com/avatars/leagueoflegends/RPBOVet8mekW/200h.jpeg', url: 'https://giphy.com/leagueoflegends' })
 	.setDescription(description)
 	.setThumbnail('https://i.imgur.com/AfFherep7pu.png')
-	.addFields({ name: 'How did we lose?', value: '-JG DIFF-', inline: true })
-	.setImage('https://media.giphy.com/media/KznLOEq0pjNfXkZHaN/giphy.gif')
+	.addFields({ name: '******', value: '------', inline: true })
+	.setImage(embedSettings.gifUrl)
 	.setTimestamp()
     .setFooter({ text: embedSettings.footerText, iconURL: 'https://i.imgur.com/AfFp7pu.png' });
 
 	channel.send({ embeds: [matchEmbed] });
+
+    //client.login(DISCORD_BOT_TOKEN);
 
 }
 

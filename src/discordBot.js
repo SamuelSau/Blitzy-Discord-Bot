@@ -1,12 +1,13 @@
 // const {connectMongoDB} = require('./mongodbClient');
 import { connectMongoDB } from './mongoDBConnection.js';
+import {createGifEmbeddings} from './gifEmbeddings.js';
+import cron from 'node-cron';
 import {
 	Client,
 	GatewayIntentBits,
 	SlashCommandBuilder,
 	REST,
-	Routes,
-	EmbedBuilder 
+	Routes, 
 } from 'discord.js';
 import {} from 'dotenv/config';
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -22,11 +23,13 @@ let leagueGambleChannelId;
 let guild;
 let channel;
 const channelName = 'league-gambling'
-
 let db;
 
 
  async function setUpChannel(){
+
+
+
 	guild = client.guilds.cache.get(GUILD_ID);
 
 	const existingChannel = guild.channels.cache.find(
@@ -95,6 +98,8 @@ export async function startDiscordBot() {
 		}
 	})();
 
+	
+
 	client.on('interactionCreate', async (interaction) => {
 		if (!interaction.isCommand()) return;
 
@@ -106,6 +111,7 @@ export async function startDiscordBot() {
 			await checkInventoryAmount(interaction);
 		}
 	});
+
 
 	client.on('ready', async () => {
 		console.log(`Logged in as ${client.user.tag}!`);
@@ -217,7 +223,7 @@ export async function betMatch(interaction) {
 	}
 
 
-export async function annnounceResultAndDistributePoints(result) {
+export async function annnounceResultAndDistributePoints(summonerName, summonerTeamColor, result) {
 	const betsCollection = db.collection('userBets');
     const inventoryCollection = db.collection('userInventories');
 	let discordName = ''; 
@@ -232,30 +238,31 @@ export async function annnounceResultAndDistributePoints(result) {
 				discordName = member.user.username; // Set the variable
 			} catch (error) {
 				console.error('Error fetching member:', error);
-				return;
+				continue;
 			}
 
-			const updateAmount = bet.team === result ? bet.amount * 2 : -bet.amount;
+			let updateAmount = 0;
+            if (bet.team === summonerTeamColor && result === 'won') {
+                updateAmount = bet.amount * 2; // User wins, double their bet
+            }
+	
 			await inventoryCollection.updateOne(
-				{ userId: bet.userId },
-				{ $inc: { balance: updateAmount } }
-			);
-	
+                { userId: bet.userId },
+                { $inc: { balance: updateAmount } }
+            );
+
 			const updatedInventory = await inventoryCollection.findOne({ userId: bet.userId });
-			resultsMessage += `${discordName} now currently has ${updatedInventory.balance} points.\n`;
-		}
+            resultsMessage += `${discordName} now currently has ${updatedInventory.balance} points.\n`;
+        }
+		
 	
-		const announcement = `The match has ended. ${result.toUpperCase()} team is victorious!`;
+		const announcement = `The match has ended.\n\nSummoner ${summonerName} was on ${summonerTeamColor} team and **${result.toUpperCase()}** the game!`;
 		
 		channel.send(announcement);
-		await createGifEmbeddings();
 		channel.send(resultsMessage);
-
+		await createGifEmbeddings(result, channel);
+		await betsCollection.deleteMany({});
 	}
-	// Clear all bets
-    await betsCollection.deleteMany({});
-
-
 }
 
 export async function checkInventoryAmount(interaction) {
@@ -269,18 +276,17 @@ export async function checkInventoryAmount(interaction) {
     });
 }
 
-export async function createGifEmbeddings(){
-	const exampleEmbed = new EmbedBuilder()
-	.setColor(0x0099FF)
-	.setTitle('Losing')
-	.setURL('https://giphy.com/gifs/leagueoflegends-tft-pengu-teamfight-tactics-KznLOEq0pjNfXkZHaN')
-	.setAuthor({ name: 'League Of Legends', iconURL: 'https://media.giphy.com/avatars/leagueoflegends/RPBOVet8mekW/200h.jpeg', url: 'https://giphy.com/leagueoflegends' })
-	.setDescription('FF15')
-	.setThumbnail('https://i.imgur.com/AfFherep7pu.png')
-	.addFields({ name: 'How did we lose?', value: '-JG DIFF-', inline: true })
-	.setImage('https://media.giphy.com/media/KznLOEq0pjNfXkZHaN/giphy.gif')
-	.setTimestamp()
-	.setFooter({ text: "Sammy's sexy gif", iconURL: 'https://media.giphy.com/avatars/leagueoflegends/RPBOVet8mekW/200h.jpeg' });
-
-	channel.send({ embeds: [exampleEmbed] });
+// Function to add daily points
+async function addDailyPoints() {
+    const inventoryCollection = db.collection('userInventories');
+    await inventoryCollection.updateMany({}, { $inc: { balance: 500 } });
+    console.log('Added daily points to all users');
 }
+
+// Schedule the task to run at 12:00 PM every day
+cron.schedule('0 12 * * *', () => {
+    addDailyPoints();
+}, {
+    scheduled: true,
+    timezone: "America/New_York" // Replace with your timezone
+});
