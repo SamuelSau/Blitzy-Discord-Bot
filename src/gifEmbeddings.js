@@ -70,8 +70,6 @@ export async function createGifEmbeddings(result, channel){
 
 	channel.send({ embeds: [matchEmbed] });
 
-    //client.login(DISCORD_BOT_TOKEN);
-
 }
 
 // Function to randomly select a description based on the match result

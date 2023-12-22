@@ -242,7 +242,8 @@ export async function annnounceResultAndDistributePoints(summonerName, summonerT
 			}
 
 			let updateAmount = 0;
-            if (bet.team === summonerTeamColor && result === 'won') {
+
+			if (bet.team === "blue" && result === "won" || bet.team ===  "red" && result === "won") {
                 updateAmount = bet.amount * 2; // User wins, double their bet
             }
 	
@@ -255,7 +256,6 @@ export async function annnounceResultAndDistributePoints(summonerName, summonerT
             resultsMessage += `${discordName} now currently has ${updatedInventory.balance} points.\n`;
         }
 		
-	
 		const announcement = `The match has ended.\n\nSummoner ${summonerName} was on ${summonerTeamColor} team and **${result.toUpperCase()}** the game!`;
 		
 		channel.send(announcement);

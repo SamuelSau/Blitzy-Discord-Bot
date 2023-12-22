@@ -27,7 +27,7 @@ export async function startLeagueClient() {
 		let summonerName = 'Bush can talk';
 		let summonerTeamColor = null;
 		let result = null;
-
+		
 		// Assuming 'data' is the parsed JSON object
 		for (let team of data.teams) {
 			for (let player of team.players) {
