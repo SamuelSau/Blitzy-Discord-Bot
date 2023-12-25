@@ -24,11 +24,9 @@ let guild;
 let channel;
 const channelName = 'league-gambling'
 let db;
-
+let summonerName = '';
 
  async function setUpChannel(){
-
-
 
 	guild = client.guilds.cache.get(GUILD_ID);
 
@@ -61,14 +59,13 @@ export async function startDiscordBot() {
 		new SlashCommandBuilder()
 			.setName('bet')
 			.setDescription('Bet on a team')
-			.addStringOption((option) =>
-				option
-					.setName('team')
-					.setDescription('The team to bet on')
+			.addStringOption(option =>
+				option.setName('outcome')
+					.setDescription('The outcome to bet on')
 					.setRequired(true)
 					.addChoices(
-						{ name: 'Red', value: 'red' },
-						{ name: 'Blue', value: 'blue' }
+						{ name: 'Win', value: 'win' },
+						{ name: 'Lose', value: 'lose' }
 					)
 			)
 			.addIntegerOption((option) =>
@@ -131,6 +128,39 @@ export async function startDiscordBot() {
 	  
 }
 
+export async function announceGameStart(nameOfSummoner, gameMode, mapName, summonersOfBlueTeam, summonersOfRedTeam){
+	let teamMessage = "";
+	teamMessage += `Game Mode: ${gameMode}\nMap: ${mapName}\n\n`;
+	if(channel && guild){
+
+		teamMessage += '***Blue Team:***\n\n';
+
+		for (let player of summonersOfBlueTeam){
+			if(player.summonerName === nameOfSummoner){
+				teamMessage += `**${player.championName} (${nameOfSummoner})**\n`;
+				summonerName = nameOfSummoner;
+			}
+			else{
+				teamMessage += `${player.championName} (${player.summonerName})\n`;
+			}
+		}
+		teamMessage += '\n'
+		teamMessage += '***Red Team:***\n\n';
+
+		for (let player of summonersOfRedTeam){
+			if(player.summonerName === nameOfSummoner){
+				teamMessage += `**${player.championName} (${nameOfSummoner})**\n`;
+				summonerName = nameOfSummoner;
+			}
+			else{	
+				teamMessage += `${player.championName} (${player.summonerName})\n`;
+				}
+		}
+		teamMessage += '\n\n'
+		channel.send(teamMessage);
+	}
+}
+
 export function bettingPeriod() {
     isBettingOpen = true;
     let remainingTime = 5; // Time in minutes
@@ -148,13 +178,13 @@ export function bettingPeriod() {
     const endTimeFormatted = endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
     // Send the initial countdown message
-    channel.send(`Bush can Talk is now in a game.\n\nBetting period has started!\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n`)
+    channel.send(`\n\n*Betting period has started!*\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n`)
         .then((message) => {
             const countdownInterval = setInterval(() => {
                 remainingTime--;
                 if (remainingTime > 0) {
                     // Edit the message with the updated countdown
-                    message.edit(`Bush can Talk is now in a game.\n\nBetting period has started!\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n**You have ${remainingTime} minutes left to bet.**`);
+                    message.edit(`\n\nBetting period has started!\n\nBetting starts: ${startTimeFormatted}\nBetting ends: ${endTimeFormatted}\n\n**You have ${remainingTime} minutes left to bet.**`);
                 } else {
                     clearInterval(countdownInterval);
                     isBettingOpen = false;
@@ -168,7 +198,7 @@ export function bettingPeriod() {
 
 export async function betMatch(interaction) {
 
-	const team = interaction.options.getString('team');
+	const outcome = interaction.options.getString('outcome');	
 	const amount = interaction.options.getInteger('amount');
 	const userId = interaction.user.id;
 
@@ -204,7 +234,7 @@ export async function betMatch(interaction) {
 
 
 	// Place a new bet and update user inventory
-	await betsCollection.insertOne({ userId, team, amount });
+	await betsCollection.insertOne({ userId, outcome, amount });
 	await inventoryCollection.updateOne(
 		{ userId },
 		{ $inc: { balance: -amount } }
@@ -218,15 +248,16 @@ export async function betMatch(interaction) {
 		return;
 	}
 
-	await interaction.reply(`Bet placed: ${amount} points on ${team} team.`);
+	await interaction.reply(`Bet placed: ${amount} points you predicted that ${summonerName} will ${outcome}`);
 
 	}
 
 
-export async function annnounceResultAndDistributePoints(summonerName, summonerTeamColor, result) {
+export async function annnounceResultAndDistributePoints(summonerTeamColor, gameResult) {
 	const betsCollection = db.collection('userBets');
     const inventoryCollection = db.collection('userInventories');
 	let discordName = ''; 
+	let betResult;
 
     const bets = await betsCollection.find().toArray();
     let resultsMessage = 'Betting Results:\n\n';
@@ -241,26 +272,27 @@ export async function annnounceResultAndDistributePoints(summonerName, summonerT
 				continue;
 			}
 
-			let updateAmount = 0;
+			// Determine if the user won or lost their bet
 
-			if (bet.team === "blue" && result === "won" || bet.team ===  "red" && result === "won") {
-                updateAmount = bet.amount * 2; // User wins, double their bet
-            }
-	
+			if ((gameResult === 'won' && bet.outcome === 'win') || (gameResult === 'lost' && bet.outcome === 'lose')) {
+				// User correctly predicted the outcome
+				betResult = bet.amount * 2; // Double their bet
+			}
+
 			await inventoryCollection.updateOne(
                 { userId: bet.userId },
-                { $inc: { balance: updateAmount } }
+                { $inc: { balance: betResult } }
             );
 
 			const updatedInventory = await inventoryCollection.findOne({ userId: bet.userId });
             resultsMessage += `${discordName} now currently has ${updatedInventory.balance} points.\n`;
         }
 		
-		const announcement = `The match has ended.\n\nSummoner ${summonerName} was on ${summonerTeamColor} team and **${result.toUpperCase()}** the game!`;
+		const announcement = `The match has ended.\n\n${summonerName} was on ${summonerTeamColor} team and **${gameResult.toUpperCase()}** the game!`;
 		
 		channel.send(announcement);
 		channel.send(resultsMessage);
-		await createGifEmbeddings(result, channel);
+		createGifEmbeddings(gameResult, channel);
 		await betsCollection.deleteMany({});
 	}
 }

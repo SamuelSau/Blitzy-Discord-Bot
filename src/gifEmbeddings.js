@@ -8,18 +8,19 @@ const winDescriptions = [
     "HE'S HIM",
     "GG EZ",
     "TOO GOOD",
-    "DUY GOT FIRED",
-    "HIEU CANNOT COOK",
-    "PHILLIP IS UNEMPLOYED",
-    "ALEX BECAME HOMELESS",
-    "KEVIN BLINDED MY EYES",
-    "I'M FAKER'S SON"
+    "I'M FAKER'S SON",
+    "A flawless victory",
+    "Team differential",
+    "I'm smurfing",
+    "Should've played better"
 ];
 
 const loseDescriptions = [
     'Tough luck this time!',
     'A valiant effort, despite the loss.',
     'The defeat is only a stepping stone to success.',
+    'NICE TRY',
+    "IT'S JUST A WARMUP GAME",
     'GG TEAM SUCKS',
     "SHOULD'VE DODGED",
     "UNLUCKY TEAM",
@@ -28,7 +29,12 @@ const loseDescriptions = [
     "I'M NOT ON COPIUM, I SWEAR",
     "IT'S BECAUSE DUY IS ON MY TEAM",
     "HIEU PLAYS LIKE LEE SIN AKA BLIND",
-    "ALEX DRANK A LITTLE TOO MUCH BEFORE THIS GAME"
+    "ALEX DRANK A LITTLE TOO MUCH BEFORE THIS GAME",
+    "DUY GOT FIRED",
+    "HIEU CANNOT COOK",
+    "PHILLIP IS UNEMPLOYED",
+    "ALEX BECAME HOMELESS",
+    "KEVIN BLINDED MY EYES",
 ];
 
 export async function createGifEmbeddings(result, channel){
