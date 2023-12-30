@@ -21,7 +21,8 @@ export async function startLeagueClient() {
 	  })
 
 	let nameOfSummoner = "Bush can talk";
-
+	let hasAnnouncedResults = false;
+	
 	ws.subscribe('/lol-gameflow/v1/session', async (data) => {
 		let gamePhase = data['phase'];
 		let gameMode = data['map']['gameMode']
@@ -32,9 +33,15 @@ export async function startLeagueClient() {
 		let championName = '';
 		let summonersOfBlueTeam = [];
 		let summonersOfRedTeam = [];
-		
+
+		if (gamePhase === 'Lobby' || gamePhase == 'ChampSelect'){
+			hasAnnouncedResults = false;
+		}
+
+		console.log(data);
 		if (gamePhase === 'GameStart')
 		{
+			
 			for (let bluePlayer of blueTeam)
 			{	
 				championId = bluePlayer['championId']
@@ -61,8 +68,13 @@ export async function startLeagueClient() {
 		
 	});
 
+
 	ws.subscribe('/lol-end-of-game/v1/eog-stats-block', (data) => { //grab if i am on the winning team
 		
+		if (hasAnnouncedResults === true){
+			return;
+		}
+
 		let summonerTeamColor = null;
 		let result = null;
 
@@ -78,8 +90,11 @@ export async function startLeagueClient() {
 			if (summonerTeamColor !== null) break;
 		}
 
-		annnounceResultAndDistributePoints(summonerTeamColor, result); 
-
+		if (result !== null && summonerTeamColor !== null) {
+			annnounceResultAndDistributePoints(summonerTeamColor, result);
+			hasAnnouncedResults = true;
+		}
+		
 	});
 
 	process.on('SIGINT', () => {

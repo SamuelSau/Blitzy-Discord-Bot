@@ -12,7 +12,7 @@ import {
 import {} from 'dotenv/config';
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+const GUILD_ID = process.env.GUILD_ID_2;
 
 const client = new Client({
 	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent], 
@@ -163,7 +163,7 @@ export async function announceGameStart(nameOfSummoner, gameMode, mapName, summo
 
 export function bettingPeriod() {
     isBettingOpen = true;
-    let remainingTime = 5; // Time in minutes
+    let remainingTime = 3; // Time in minutes
 
     if (!channel) {
         console.error('Channel not found');
@@ -198,6 +198,14 @@ export function bettingPeriod() {
 
 export async function betMatch(interaction) {
 
+	if (!isBettingOpen) {
+		await interaction.reply({
+			content: 'No betting during this time.',
+			ephemeral: true
+		});
+		return;
+	}
+
 	const outcome = interaction.options.getString('outcome');	
 	const amount = interaction.options.getInteger('amount');
 	const userId = interaction.user.id;
@@ -208,13 +216,13 @@ export async function betMatch(interaction) {
 
     if (!inventory) {
         // User does not exist in the database, initialize with 5000 points
-        await inventoryCollection.insertOne({ userId, balance: 5000 });
+        await inventoryCollection.insertOne({ userId, balance: 20000 });
         inventory = { balance: 5000 };
     }
 
 	if (inventory.balance < amount) {
 		await interaction.reply({
-			content: 'Insufficient credit to place this bet.',
+			content: 'Insufficient amount of points to place this bet.',
 			ephemeral: true,
 		});
 		return;
@@ -240,13 +248,6 @@ export async function betMatch(interaction) {
 		{ $inc: { balance: -amount } }
 	);
 
-	if (!isBettingOpen) {
-		await interaction.reply({
-			content: 'No betting during this time.',
-			ephemeral: true
-		});
-		return;
-	}
 
 	await interaction.reply(`Bet placed: ${amount} points you predicted that ${summonerName} will ${outcome}`);
 
@@ -257,7 +258,6 @@ export async function annnounceResultAndDistributePoints(summonerTeamColor, game
 	const betsCollection = db.collection('userBets');
     const inventoryCollection = db.collection('userInventories');
 	let discordName = ''; 
-	let betResult;
 
     const bets = await betsCollection.find().toArray();
     let resultsMessage = 'Betting Results:\n\n';
@@ -273,7 +273,7 @@ export async function annnounceResultAndDistributePoints(summonerTeamColor, game
 			}
 
 			// Determine if the user won or lost their bet
-
+			let betResult = 0; // Initialize betResult to 0
 			if ((gameResult === 'won' && bet.outcome === 'win') || (gameResult === 'lost' && bet.outcome === 'lose')) {
 				// User correctly predicted the outcome
 				betResult = bet.amount * 2; // Double their bet
