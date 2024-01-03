@@ -38,7 +38,6 @@ export async function startLeagueClient() {
 			hasAnnouncedResults = false;
 		}
 
-		console.log(data);
 		if (gamePhase === 'GameStart')
 		{
 			
